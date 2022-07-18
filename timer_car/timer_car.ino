@@ -1,7 +1,7 @@
 // 使用定时器进行pidMotorControl
 #include <Servo.h>
 #include "LedControl.h"
-#include <Wire.h>        //调用IIC库函数
+//#include <Wire.h>        //调用IIC库函数
 #include "MH_TCS34725.h" //调用颜色识别传感器库函数
 #ifdef __AVR__
 #include <avr/power.h>
@@ -19,11 +19,11 @@
 
 // 常量
 const uint8_t SPEED = 240;
-const uint8_t theta = 15; // 左右轮速度差
-const uint8_t deltaPWM = 200;
-const uint8_t weakPWM = 140;
+const uint8_t theta = 20; // 左右轮速度差
+const uint8_t deltaPWM = 210;
+const uint8_t weakPWM = 80;
 //const uint8_t time_delay = 50;
-const uint8_t encoderTime = 25;
+const uint8_t encoderTime = 10;
 
 //初始化目标速度
 int expectedPWML = SPEED - theta;
@@ -37,8 +37,8 @@ uint8_t le=0;
 uint8_t ri=0;
 uint8_t mi = 0;
 uint8_t flag = 0;
-const uint8_t thresholdL = 180;
-const uint8_t thresholdR = 180; 
+const uint8_t thresholdL = 190;
+const uint8_t thresholdR = 190; 
 const uint8_t thresholdM = 190;
 int gSL[2]={150,150};
 int gSR[2]={150,150};
@@ -58,9 +58,9 @@ Servo my_servo;
 uint8_t DOWN = 0, UP = 180;
 
 // 时间定时器
-const uint16_t upperBound = 800; 
+const uint16_t upperBound = 100; 
 uint16_t time_counter = 0;
-uint16_t sensor_delay = 650;
+uint16_t sensor_delay = 750;
 
 void setup()
 {
@@ -88,8 +88,9 @@ void setup()
 
 void loop()
 {
-  if (time_counter >= upperBound)
-    hitBall();
+    if(time_counter >= upperBound){
+      hitBall();
+    }
 }
 
 void showColor(uint8_t color)
@@ -147,31 +148,30 @@ void showColor(uint8_t color)
 
 void hitBall()
 {
-    color = colorDetect();
+    color = colorDetect();   
     if (color != 0 && card_color == 0)
-    {
+    { 
+        expectedPWML -= 100;
+        expectedPWMR -= 100;
         card_color = color; // 记录色卡颜色
         showColor(color);
-        expectedPWML -= 120;
-        expectedPWMR -= 120;
         color = 0;
-        motorRun(0,0);
-        delay(150);
+        for(uint8_t i=0; i<3; ++i) motorRun(0,0);
+        delay(200);
         motorRun(0,0);
     }
-    if (card_color != 0 && color == card_color)
+    else if (card_color != 0 && color == card_color)
     {
-        motorRun(0, 0);
-        MsTimer2::stop();
+        for(uint8_t i=0; i<5; ++i) motorRun(0,0);
         my_servo.attach(SERVO);
         my_servo.write(UP);
         delay(sensor_delay);
         my_servo.write(DOWN);
         delay(sensor_delay);
         my_servo.detach();
-        expectedPWML += 120;
-        expectedPWMR += 120;
-        MsTimer2::start();
+        time_counter = 0;
+        expectedPWML += 110;
+        expectedPWMR += 110;
     }
 }
 
@@ -223,16 +223,42 @@ void motorRun(int left, int right)
     }
   }
   // check the color
-  Serial.print(hsv[0]); Serial.print(",");
-  Serial.print(hsv[1]); Serial.print(",");
-  Serial.println(hsv[2]);
-  if (hsv[1] >= 60 && hsv[2] >= 130) {
-    if (hsv[0] >= 340 && hsv[0] <= 360) return 1;
-    else if (hsv[0] >=120 && hsv[0] <= 150) return 2;
+//  Serial.print(hsv[0]); Serial.print(",");
+//  Serial.print(hsv[1]); Serial.print(",");
+//  Serial.println(hsv[2]);
+  if (hsv[1] >= 60 && hsv[2] >= 120) {
+    if (hsv[0] >= 340 && hsv[0] < 360) return 1;
+    else if (hsv[0] >=110 && hsv[0] <= 160) return 2;
     else if (hsv[0] >= 220 && hsv[0] <= 240) return 3;
     else return 0;
   }
   else return 0;
+}
+
+
+void maintance() {
+  switch(flag){
+        case 0:
+            motorRun(expectedPWML, expectedPWMR);
+            break;
+          case 3:
+            motorRun(expectedPWML, expectedPWMR);
+            break;
+          case 2:
+            motorRun(expectedPWML - 2 * weakPWM, expectedPWMR - weakPWM);
+            break;
+          case 1:
+            motorRun(expectedPWML -weakPWM + theta, expectedPWMR - 2 * weakPWM);
+            break;
+          case 5:
+            motorRun(expectedPWML - deltaPWM, expectedPWMR);
+            break;
+          case 4:
+            motorRun(expectedPWML + theta, expectedPWMR - deltaPWM);
+            break;
+          default:
+            break;
+}
 }
 
 void pidMotorControl()
@@ -241,12 +267,12 @@ void pidMotorControl()
     gSL[le] = analogRead(grayScale1);
     gSR[ri] = analogRead(grayScale2);
     gSM[mi]= analogRead(grayScale3);
-    Serial.print((gSL[le] + gSL[!le])/2); Serial.print(",");
-    Serial.print((gSR[ri] + gSR[!ri])/2); Serial.print(",");
-    Serial.println((gSM[mi] + gSM[!mi])/2);
-    gS1 = (gSL[le] + gSL[!le])/2 > thresholdL ? 1 : 0;
-    gS2 = (gSR[ri] + gSR[!ri])/2 > thresholdR ? 1 : 0;
-    gS = (gSM[mi] + gSM[!mi])/2 > thresholdM ? 1 : 0;
+//    Serial.print(0.8 * gSL[le] + 0.2 * gSL[!le]); Serial.print(",");
+//    Serial.print(0.8 * gSR[ri] + 0.2 * gSR[!ri]); Serial.print(",");
+//    Serial.println(0.8 * gSM[mi] + 0.2 * gSM[!mi]);
+    gS1 = (0.8 * gSL[le] + 0.2 *  gSL[!le]) > thresholdL ? 1 : 0;
+    gS2 = (0.8 * gSR[ri] + 0.2 * gSR[!ri]) > thresholdR ? 1 : 0;
+    gS = (0.8 * gSM[mi] + 0.2 * gSM[!mi]) > thresholdM ? 1 : 0;
     le = !le; ri = !ri;
     if (gS == 0) {
       if (gS1 == 1 && gS2 == 1) {
@@ -255,11 +281,11 @@ void pidMotorControl()
       }
       else if (gS1 == 1 && gS2 == 0) {
         flag = 1;
-        motorRun(expectedPWML, expectedPWMR - weakPWM);
+        motorRun(expectedPWML - weakPWM + theta, expectedPWMR - 2 * weakPWM);
       }
       else if (gS1 == 0 && gS2 == 1) {
         flag = 2;
-        motorRun(expectedPWML - weakPWM, expectedPWMR);
+        motorRun(expectedPWML - 2 * weakPWM, expectedPWMR - weakPWM);
       }
       else {
         flag = 3;
@@ -268,60 +294,18 @@ void pidMotorControl()
     }
     else {
       if (gS1 == 1 && gS2 == 1) {
-        switch(flag) {
-          case 0:
-            motorRun(expectedPWML, expectedPWMR);
-            break;
-          case 3:
-            motorRun(expectedPWML , expectedPWMR);
-            break;
-          case 2:
-            motorRun(expectedPWML - weakPWM, expectedPWMR);
-            break;
-          case 1:
-            motorRun(expectedPWML, expectedPWMR - weakPWM);
-            break;
-          case 5:
-            motorRun(expectedPWML - deltaPWM, expectedPWMR);
-            break;
-          case 4:
-            motorRun(expectedPWML, expectedPWMR - deltaPWM);
-            break;
-          default:
-            break;
+          maintance();
         } 
-      }
       else if (gS1 == 1 && gS2 == 0) {
         flag = 4;
-        motorRun(expectedPWML, expectedPWMR - deltaPWM);
+        motorRun(expectedPWML + theta, expectedPWMR - deltaPWM);
       }
       else if (gS1 == 0 && gS2 == 1) {
         flag = 5;
         motorRun(expectedPWML - deltaPWM, expectedPWMR);
       }
       else {
-        switch(flag){
-        case 0:
-            motorRun(expectedPWML, expectedPWMR);
-            break;
-          case 3:
-            motorRun(expectedPWML, expectedPWMR);
-            break;
-          case 2:
-            motorRun(expectedPWML - weakPWM, expectedPWMR);
-            break;
-          case 1:
-            motorRun(expectedPWML, expectedPWMR - weakPWM);
-            break;
-          case 5:
-            motorRun(expectedPWML - deltaPWM, expectedPWMR);
-            break;
-          case 4:
-            motorRun(expectedPWML, expectedPWMR - deltaPWM);
-            break;
-          default:
-            break;
-        }
-      }
+      maintance();
     }   
+}
 }
